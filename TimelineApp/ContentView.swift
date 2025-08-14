@@ -15,6 +15,7 @@ struct ContentView: View {
                     .fill(Color(NSColor.windowBackgroundColor).opacity(0.5))
                     .frame(width: 5)
                     .cornerRadius(2.5)
+                    .allowsHitTesting(false)
                     .position(x: 2.5, y: geometry.size.height / 2)
 
                 // 2. 遍历并显示日程
@@ -43,6 +44,7 @@ struct ContentView: View {
                 Rectangle()
                     .fill(Color.primary)
                     .frame(width: 5, height: 2)
+                    .allowsHitTesting(false)
                     .position(x: 2.5, y: calculateYOffset(for: eventManager.now, in: geometry.size.height))
             }
         }
@@ -84,14 +86,16 @@ struct EventBarView: View {
             .cornerRadius(2.5)
             .onHover { isHovering in
                 if isHovering {
-                    // Mouse entered: schedule to show popover
+                    // 鼠标进入：窗口变为可交互，并准备显示气泡
+                    NSApp.windows.first?.ignoresMouseEvents = false
                     let item = DispatchWorkItem {
                         self.popoverEvent = event
                     }
                     self.workItem = item
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
                 } else {
-                    // Mouse exited: cancel scheduled work and hide popover
+                    // 鼠标离开：窗口恢复为可穿透，并取消显示气泡
+                    NSApp.windows.first?.ignoresMouseEvents = true
                     self.workItem?.cancel()
                     self.popoverEvent = nil
                 }

@@ -1,27 +1,29 @@
 // AppDelegate.swift
 import Cocoa
 import SwiftUI
+import ServiceManagement // 引入 ServiceManagement 框架
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var window: NSWindow!
     var statusItem: NSStatusItem?
     
-    // 定义刷新间隔的选项
     private let intervalOptions: [(name: String, value: TimeInterval)] = [
         ("5分钟", 300),
         ("15分钟", 900),
         ("30分钟", 1800),
         ("1小时", 3600)
     ]
+    
+    private let positionOptions: [(name: String, value: String)] = [
+        ("左侧", "left"),
+        ("右侧", "right")
+    ]
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let contentView = ContentView()
 
-        guard let screen = NSScreen.main else { return }
-        let screenRect = screen.frame
-
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: screenRect.height),
+            contentRect: NSRect(x: 0, y: 0, width: 5, height: NSScreen.main?.frame.height ?? 800),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -30,9 +32,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.level = .floating
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.ignoresMouseEvents = false
+        window.ignoresMouseEvents = true
 
-        window.setFrameOrigin(NSPoint(x: 0, y: 0))
+        updateWindowPosition()
+        
         window.contentView = NSHostingView(rootView: contentView)
         window.makeKeyAndOrderFront(nil)
         
@@ -48,46 +51,66 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let menu = NSMenu()
-        menu.delegate = self // 设置代理，用于在菜单打开前更新状态
+        menu.delegate = self
         
-        // --- 创建刷新间隔子菜单 ---
+        // --- 组1: 操作 ---
+        let refreshItem = NSMenuItem(title: "立即刷新", action: #selector(refreshNow), keyEquivalent: "r")
+        refreshItem.target = self
+        menu.addItem(refreshItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
+        // --- 组2: 设置 ---
+        let positionMenu = NSMenu()
+        for option in positionOptions {
+            let menuItem = NSMenuItem(title: option.name, action: #selector(positionSelected(_:)), keyEquivalent: "")
+            menuItem.target = self
+            menuItem.representedObject = option.value
+            positionMenu.addItem(menuItem)
+        }
+        let positionParentItem = NSMenuItem(title: "位置", action: nil, keyEquivalent: "")
+        positionParentItem.submenu = positionMenu
+        menu.addItem(positionParentItem)
+        
         let intervalMenu = NSMenu()
         for option in intervalOptions {
-            let menuItem = NSMenuItem(
-                title: option.name,
-                action: #selector(intervalSelected(_:)),
-                keyEquivalent: ""
-            )
+            let menuItem = NSMenuItem(title: option.name, action: #selector(intervalSelected(_:)), keyEquivalent: "")
             menuItem.target = self
-            // 将秒数存入 representedObject 以便在点击时获取
             menuItem.representedObject = option.value
             intervalMenu.addItem(menuItem)
         }
-        
         let intervalParentItem = NSMenuItem(title: "刷新间隔", action: nil, keyEquivalent: "")
         intervalParentItem.submenu = intervalMenu
         menu.addItem(intervalParentItem)
         
         menu.addItem(NSMenuItem.separator())
         
-        // --- 创建退出菜单项 ---
-        let quitItem = NSMenuItem(
-            title: "Quit TimelineApp",
-            action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q"
-        )
+        // --- 组3: 应用 ---
+        // 开机自启动选项
+        let launchAtLoginItem = NSMenuItem(title: "开机自启动", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
+        launchAtLoginItem.target = self
+        menu.addItem(launchAtLoginItem)
+        
+        let quitItem = NSMenuItem(title: "Quit TimelineApp", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
         
         statusItem?.menu = menu
     }
     
-    // 菜单即将打开时，系统会调用这个代理方法
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // 读取当前保存的间隔值，默认为900
+        // 更新位置菜单的对勾
+        let currentPosition = UserDefaults.standard.string(forKey: "timelinePosition") ?? "left"
+        if let positionMenu = menu.item(withTitle: "位置")?.submenu {
+            for item in positionMenu.items {
+                if let itemPosition = item.representedObject as? String {
+                    item.state = (itemPosition == currentPosition) ? .on : .off
+                }
+            }
+        }
+        
+        // 更新刷新间隔菜单的对勾
         let currentInterval = UserDefaults.standard.double(forKey: "refreshInterval")
         let effectiveInterval = currentInterval > 0 ? currentInterval : 900
-        
-        // 遍历子菜单，更新对勾状态
         if let intervalMenu = menu.item(withTitle: "刷新间隔")?.submenu {
             for item in intervalMenu.items {
                 if let itemInterval = item.representedObject as? TimeInterval {
@@ -95,16 +118,61 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
+        
+        // 更新开机自启动的勾选状态
+        if let launchAtLoginItem = menu.item(withTitle: "开机自启动") {
+            // SMLoginItemSetEnabled 没有直接的 getter，通常需要通过 UserDefaults 标志来反映 UI 状态
+            // 假设我们通过 UserDefaults 存储了上次设置的状态
+            let isLaunchAtLoginEnabled = UserDefaults.standard.bool(forKey: "launchAtLoginEnabled")
+            launchAtLoginItem.state = isLaunchAtLoginEnabled ? .on : .off
+        }
     }
     
-    // 当点击某个间隔选项时调用
+    @objc func refreshNow() {
+        NotificationCenter.default.post(name: .manualRefreshRequested, object: nil)
+    }
+    
+    @objc func positionSelected(_ sender: NSMenuItem) {
+        guard let position = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(position, forKey: "timelinePosition")
+        updateWindowPosition()
+    }
+    
     @objc func intervalSelected(_ sender: NSMenuItem) {
         guard let interval = sender.representedObject as? TimeInterval else { return }
-        
-        // 保存新值到 UserDefaults
         UserDefaults.standard.set(interval, forKey: "refreshInterval")
-        
-        // 发送通知，让 EventManager 更新计时器
         NotificationCenter.default.post(name: .refreshIntervalChanged, object: nil)
+    }
+    
+    @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        guard let bundleID = Bundle.main.bundleIdentifier else { 
+            print("错误：无法获取应用 Bundle ID。")
+            return 
+        }
+        
+        let newState = (sender.state == .off) ? NSControl.StateValue.on : .off
+        let enable = (newState == .on)
+        
+        print("尝试设置开机自启动：Bundle ID = \(bundleID), 启用 = \(enable)")
+        let success = SMLoginItemSetEnabled(bundleID as CFString, enable)
+        
+        if success {
+            sender.state = newState
+            UserDefaults.standard.set(enable, forKey: "launchAtLoginEnabled")
+            print("开机自启动设置成功。")
+        } else {
+            print("开机自启动设置失败。SMLoginItemSetEnabled 返回 false。")
+            // 失败时，将 UI 状态恢复到之前，避免误导用户
+            sender.state = (enable) ? .off : .on 
+            UserDefaults.standard.set(!enable, forKey: "launchAtLoginEnabled")
+        }
+    }
+    
+    func updateWindowPosition() {
+        guard let screen = NSScreen.main, let window = self.window else { return }
+        let position = UserDefaults.standard.string(forKey: "timelinePosition") ?? "left"
+        
+        let newX = (position == "right") ? (screen.frame.width - window.frame.width) : 0
+        window.setFrameOrigin(NSPoint(x: newX, y: 0))
     }
 }
