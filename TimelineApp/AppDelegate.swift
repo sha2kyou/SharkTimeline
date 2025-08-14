@@ -121,9 +121,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         // 更新开机自启动的勾选状态
         if let launchAtLoginItem = menu.item(withTitle: "开机自启动") {
-            // SMLoginItemSetEnabled 没有直接的 getter，通常需要通过 UserDefaults 标志来反映 UI 状态
-            // 假设我们通过 UserDefaults 存储了上次设置的状态
-            let isLaunchAtLoginEnabled = UserDefaults.standard.bool(forKey: "launchAtLoginEnabled")
+            var isLaunchAtLoginEnabled = false
+            if #available(macOS 13.0, *) {
+                isLaunchAtLoginEnabled = (SMAppService.mainApp.status == .enabled)
+            } else {
+                // Fallback on earlier versions
+                isLaunchAtLoginEnabled = UserDefaults.standard.bool(forKey: "launchAtLoginEnabled")
+            }
             launchAtLoginItem.state = isLaunchAtLoginEnabled ? .on : .off
         }
     }
@@ -145,26 +149,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
-        guard let bundleID = Bundle.main.bundleIdentifier else { 
-            print("错误：无法获取应用 Bundle ID。")
-            return 
-        }
-        
         let newState = (sender.state == .off) ? NSControl.StateValue.on : .off
         let enable = (newState == .on)
-        
-        print("尝试设置开机自启动：Bundle ID = \(bundleID), 启用 = \(enable)")
-        let success = SMLoginItemSetEnabled(bundleID as CFString, enable)
-        
-        if success {
-            sender.state = newState
-            UserDefaults.standard.set(enable, forKey: "launchAtLoginEnabled")
-            print("开机自启动设置成功。")
-        } else {
-            print("开机自启动设置失败。SMLoginItemSetEnabled 返回 false。")
-            // 失败时，将 UI 状态恢复到之前，避免误导用户
-            sender.state = (enable) ? .off : .on 
-            UserDefaults.standard.set(!enable, forKey: "launchAtLoginEnabled")
+
+        Task { @MainActor in
+            do {
+                if enable {
+                    if #available(macOS 13.0, *) {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        // Fallback on earlier versions
+                        guard let bundleID = Bundle.main.bundleIdentifier else {
+                            print("错误：无法获取应用 Bundle ID。")
+                            return
+                        }
+                        _ = SMLoginItemSetEnabled(bundleID as CFString, true)
+                    }
+                    print("开机自启动已启用。")
+                } else {
+                    if #available(macOS 13.0, *) {
+                        try SMAppService.mainApp.unregister()
+                    } else {
+                        // Fallback on earlier versions
+                        guard let bundleID = Bundle.main.bundleIdentifier else {
+                            print("错误：无法获取应用 Bundle ID。")
+                            return
+                        }
+                        _ = SMLoginItemSetEnabled(bundleID as CFString, false)
+                    }
+                    print("开机自启动已禁用。")
+                }
+                sender.state = newState
+                UserDefaults.standard.set(enable, forKey: "launchAtLoginEnabled") // 更新 UserDefaults 状态
+            } catch {
+                print("设置开机自启动失败：\(error.localizedDescription)")
+                // 失败时，将 UI 状态恢复到之前，避免误导用户
+                sender.state = (enable) ? .off : .on
+                UserDefaults.standard.set(!enable, forKey: "launchAtLoginEnabled")
+            }
         }
     }
     
