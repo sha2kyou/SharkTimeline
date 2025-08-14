@@ -23,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let contentView = ContentView()
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 5, height: NSScreen.main?.frame.height ?? 800),
+            contentRect: NSRect(x: 0, y: 0, width: 3, height: NSScreen.main?.frame.height ?? 800),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -146,7 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 
                 if let itemScreenID = menuItem.representedObject as? String, itemScreenID == preferredScreenID {
                     menuItem.state = .on
-                } else if preferredScreenID == nil && screen == NSScreen.main {
+                } else if preferredScreenID == nil && (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue == (NSScreen.main?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue {
                     // If no preferred screen is set, mark the main screen as selected
                     menuItem.state = .on
                 } else {

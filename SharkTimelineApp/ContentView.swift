@@ -105,7 +105,7 @@ struct EventBarView: View {
                 HStack(spacing: 12) {
                     Capsule()
                         .fill(event.color)
-                        .frame(width: 4)
+                        .frame(width: 5)
 
                     VStack(alignment: .leading) {
                         Text(event.title)
