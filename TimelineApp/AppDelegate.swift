@@ -40,6 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.makeKeyAndOrderFront(nil)
         
         setupMenuBar()
+        
+        // Register for screen parameter change notifications
+        NotificationCenter.default.addObserver(self, selector: #selector(screenParametersDidChange(_:)), name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     func setupMenuBar() {
@@ -83,6 +86,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         intervalParentItem.submenu = intervalMenu
         menu.addItem(intervalParentItem)
         
+        // --- 组2.5: 显示器 ---
+        let displayMenu = NSMenu()
+        let displayParentItem = NSMenuItem(title: "显示器", action: nil, keyEquivalent: "")
+        displayParentItem.submenu = displayMenu
+        menu.addItem(displayParentItem)
+        
         menu.addItem(NSMenuItem.separator())
         
         // --- 组3: 应用 ---
@@ -119,6 +128,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         
+        // 更新显示器菜单
+        if let displayMenu = menu.item(withTitle: "显示器")?.submenu {
+            displayMenu.removeAllItems() // 清除旧的菜单项
+            let screens = NSScreen.screens
+            let preferredScreenID = UserDefaults.standard.string(forKey: "preferredScreenIdentifier")
+            
+            for (index, screen) in screens.enumerated() {
+                let menuItem = NSMenuItem(title: screen.localizedName, action: #selector(screenSelected(_:)), keyEquivalent: "")
+                menuItem.target = self
+                // Use screen.deviceDescription as a unique identifier for the screen
+                if let screenID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                    menuItem.representedObject = screenID.stringValue
+                } else {
+                    menuItem.representedObject = "screen_\(index)" // Fallback identifier
+                }
+                
+                if let itemScreenID = menuItem.representedObject as? String, itemScreenID == preferredScreenID {
+                    menuItem.state = .on
+                } else if preferredScreenID == nil && screen == NSScreen.main {
+                    // If no preferred screen is set, mark the main screen as selected
+                    menuItem.state = .on
+                } else {
+                    menuItem.state = .off
+                }
+                displayMenu.addItem(menuItem)
+            }
+        }
+        
         // 更新开机自启动的勾选状态
         if let launchAtLoginItem = menu.item(withTitle: "开机自启动") {
             var isLaunchAtLoginEnabled = false
@@ -146,6 +183,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let interval = sender.representedObject as? TimeInterval else { return }
         UserDefaults.standard.set(interval, forKey: "refreshInterval")
         NotificationCenter.default.post(name: .refreshIntervalChanged, object: nil)
+    }
+
+    @objc func screenSelected(_ sender: NSMenuItem) {
+        guard let screenID = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(screenID, forKey: "preferredScreenIdentifier")
+        updateWindowPosition()
     }
     
     @objc func toggleLaunchAtLogin(_ sender: NSMenuItem) {
@@ -191,10 +234,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     func updateWindowPosition() {
-        guard let screen = NSScreen.main, let window = self.window else { return }
+        guard let window = self.window else { return }
+
+        var targetScreen: NSScreen? = nil
+        if let preferredScreenID = UserDefaults.standard.string(forKey: "preferredScreenIdentifier") {
+            for screen in NSScreen.screens {
+                if let screenID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+                   screenID.stringValue == preferredScreenID {
+                    targetScreen = screen
+                    break
+                }
+            }
+        }
+
+        // If no preferred screen is found or it's disconnected, default to the main screen
+        if targetScreen == nil {
+            targetScreen = NSScreen.main
+            // Do not clear the preferred screen setting if it's no longer available, so it can be re-selected if it reconnects
+        }
+
+        guard let screen = targetScreen else { return }
+
         let position = UserDefaults.standard.string(forKey: "timelinePosition") ?? "left"
-        
-        let newX = (position == "right") ? (screen.frame.width - window.frame.width) : 0
-        window.setFrameOrigin(NSPoint(x: newX, y: 0))
+
+        let newX = (position == "right") ? (screen.frame.minX + screen.frame.width - window.frame.width) : screen.frame.minX
+        window.setFrameOrigin(NSPoint(x: newX, y: screen.frame.minY))
+    }
+
+    @objc func screenParametersDidChange(_ notification: Notification) {
+        print("Screen parameters changed. Updating window position and menu.")
+        updateWindowPosition()
+        statusItem?.menu?.update() // Refresh the menu to update screen selection checkmarks
     }
 }
