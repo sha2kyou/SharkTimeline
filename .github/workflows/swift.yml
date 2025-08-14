@@ -1,0 +1,62 @@
+name: macOS App - Build, Analyze, and Release
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Build, analyze, and create release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Default Scheme
+        run: |
+          scheme_list=$(xcodebuild -list -json | tr -d "\n")
+          default=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][0]")
+          echo $default > default
+          echo "Using default scheme: $default"
+
+      - name: Build & Analyze
+        env:
+          scheme: ${{ 'default' }}
+        run: |
+          if [ $scheme = default ]; then scheme=$(cat default); fi
+          if [ "`ls -A | grep -i \\.xcworkspace\$`" ]; then filetype_parameter="workspace" && file_to_build="`ls -A | grep -i \\.xcworkspace\$`"; else filetype_parameter="project" && file_to_build="`ls -A | grep -i \\.xcodeproj\$`"; fi
+          file_to_build=`echo $file_to_build | awk '{$1=$1;print}'`
+          xcodebuild clean build analyze -scheme "$scheme" -"$filetype_parameter" "$file_to_build" | xcpretty && exit ${PIPESTATUS[0]}
+
+      - name: Get version from Info.plist
+        id: get_version
+        run: |
+          # 这里可以手动指定主应用 Info.plist 路径，避免取到测试 target
+          plist_path=$(find . -name "Info.plist" | head -n 1)
+          version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$plist_path")
+          build_num=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$plist_path")
+          echo "version=$version" >> $GITHUB_ENV
+          echo "build_num=$build_num" >> $GITHUB_ENV
+          echo "Detected version: $version (Build $build_num)"
+
+      - name: Archive macOS App
+        run: |
+          scheme=$(cat default)
+          xcodebuild -scheme "$scheme" -archivePath build/App.xcarchive archive
+          app_path=$(find build/App.xcarchive/Products/Applications -name "*.app" | head -n 1)
+          cp -R "$app_path" ./MyApp.app
+          zip -r MyApp.zip MyApp.app
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.version }}-build${{ env.build_num }}
+          name: Release v${{ env.version }} (Build ${{ env.build_num }})
+          files: MyApp.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
