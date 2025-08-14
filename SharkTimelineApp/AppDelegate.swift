@@ -23,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let contentView = ContentView()
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 3, height: NSScreen.main?.frame.height ?? 800),
+            contentRect: NSRect(x: 0, y: 0, width: 5, height: NSScreen.main?.frame.height ?? 800),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -258,6 +258,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let position = UserDefaults.standard.string(forKey: "timelinePosition") ?? "left"
 
         let newX = (position == "right") ? (screen.frame.minX + screen.frame.width - window.frame.width) : screen.frame.minX
+        print("--- Debug Window Position ---")
+        print("Screen: \(screen.localizedName) (ID: \((screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue ?? "N/A"))")
+        print("Screen Frame: \(screen.frame)")
+        print("Window Frame (before set): \(window.frame)")
+        print("Calculated newX: \(newX)")
+        print("Window Width: \(window.frame.width)")
+        print("--- End Debug ---")
         window.setFrameOrigin(NSPoint(x: newX, y: screen.frame.minY))
     }
 
