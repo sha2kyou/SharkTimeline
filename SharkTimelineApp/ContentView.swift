@@ -2,10 +2,12 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var eventManager = EventManager()
-    private let totalMinutesInDay: CGFloat = 24 * 60
-    
-    @State private var popoverEvent: ScheduledEvent?
+    @EnvironmentObject var eventManager: EventManager
+    @State private var popoverGroup: EventGroup? // State to control popover visibility for a group
+    @State private var showSettings = false
+    @State private var showAbout = false
+
+    let totalMinutesInDay: CGFloat = 1440.0 // Define totalMinutesInDay here
 
     var body: some View {
         GeometryReader { geometry in
@@ -18,25 +20,24 @@ struct ContentView: View {
                     .allowsHitTesting(false)
                     .position(x: 2.5, y: geometry.size.height / 2)
 
-                // 2. 遍历并显示日程
-                ForEach(eventManager.events) { event in
+                // 2. 遍历并显示日程组
+                ForEach(eventManager.groupedEvents) { group in
                     let today = Date()
                     let startOfDay = Calendar.current.startOfDay(for: today)
                     let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
 
-                    let effectiveStartDate = max(event.startDate, startOfDay)
-                    let effectiveEndDate = min(event.endDate, endOfDay)
+                    let effectiveStartDate = max(group.startDate, startOfDay)
+                    let effectiveEndDate = min(group.endDate, endOfDay)
 
                     let topOffset = calculateYOffset(for: effectiveStartDate, in: geometry.size.height)
                     let height = calculateHeight(from: effectiveStartDate, to: effectiveEndDate, in: geometry.size.height)
 
                     if height > 0 {
                         VStack(spacing: 0) {
-                            Spacer(minLength: topOffset)
-                            EventBarView(event: event, height: height, popoverEvent: $popoverEvent)
-                            Spacer(minLength: 0)
+                            EventGroupView(group: group, height: height, popoverGroup: $popoverGroup)
                         }
                         .frame(width: 5)
+                        .offset(y: topOffset)
                     }
                 }
                 
@@ -68,21 +69,21 @@ struct ContentView: View {
     }
 }
 
-struct EventBarView: View {
-    let event: ScheduledEvent
+struct EventGroupView: View {
+    let group: EventGroup
     let height: CGFloat
-    @Binding var popoverEvent: ScheduledEvent?
+    @Binding var popoverGroup: EventGroup?
     
     @State private var workItem: DispatchWorkItem?
 
     var body: some View {
         let isPresentedBinding = Binding<Bool>(
-            get: { self.popoverEvent?.id == event.id },
-            set: { if !$0 { self.popoverEvent = nil } }
+            get: { self.popoverGroup?.id == group.id },
+            set: { if !$0 { self.popoverGroup = nil } }
         )
 
         Rectangle()
-            .fill(event.color.opacity(0.8))
+            .fill(group.events.first?.color.opacity(0.8) ?? Color.gray.opacity(0.8)) // Use first event's color or default
             .frame(width: 5, height: height)
             .cornerRadius(2.5)
             .onHover { isHovering in
@@ -90,7 +91,8 @@ struct EventBarView: View {
                     // 鼠标进入：窗口变为可交互，并准备显示气泡
                     NSApp.windows.first?.ignoresMouseEvents = false
                     let item = DispatchWorkItem {
-                        self.popoverEvent = event
+                        // Set the popover event to the first event in the group for display
+                        self.popoverGroup = group
                     }
                     self.workItem = item
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
@@ -98,37 +100,43 @@ struct EventBarView: View {
                     // 鼠标离开：窗口恢复为可穿透，并取消显示气泡
                     NSApp.windows.first?.ignoresMouseEvents = true
                     self.workItem?.cancel()
-                    self.popoverEvent = nil
+                    self.popoverGroup = nil
                 }
             }
             .popover(isPresented: isPresentedBinding, attachmentAnchor: .point(.center), arrowEdge: .leading) {
-                HStack(spacing: 12) {
-                    Capsule()
-                        .fill(event.color)
-                        .frame(width: 5)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(popoverGroup?.events ?? []) { event in
+                        HStack(spacing: 12) {
+                            Capsule()
+                                .fill(event.color)
+                                .frame(width: 5)
 
-                    VStack(alignment: .leading) {
-                        Text(event.title)
-                            .font(.headline)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                            
-                        Text(formatTimeRange(from: event.startDate, to: event.endDate))
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        if let notes = event.notes, !notes.isEmpty {
-                            Divider()
-                                .padding(.vertical, 2)
-                            Text(notes)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(nil)
-                                .fixedSize(horizontal: false, vertical: true)
+                            VStack(alignment: .leading) {
+                                Text(event.title)
+                                    .font(.headline)
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    
+                                Text(formatTimeRange(from: event.startDate, to: event.endDate))
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                if let notes = event.notes, !notes.isEmpty {
+                                    Divider()
+                                        .padding(.vertical, 2)
+                                    Text(notes)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(nil)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+
+                            Spacer()
                         }
+                        .padding(.vertical, 4)
+                        .background(Color.clear)
                     }
-
-                    Spacer()
                 }
                 .padding()
                 .frame(maxWidth: 500)

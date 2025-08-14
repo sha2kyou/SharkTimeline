@@ -19,8 +19,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ("右侧", "right")
     ]
 
+    var eventManager: EventManager! // Add this property
+
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        // Initialize EventManager
+        eventManager = EventManager()
+
         let contentView = ContentView()
+            .environmentObject(eventManager)
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 5, height: NSScreen.main?.frame.height ?? 800),
@@ -29,7 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             defer: false
         )
 
-        window.level = .floating
+        window.level = .statusBar
         window.isOpaque = false
         window.backgroundColor = .clear
         window.ignoresMouseEvents = true

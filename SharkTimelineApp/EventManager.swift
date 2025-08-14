@@ -11,22 +11,85 @@ extension Notification.Name {
 }
 
 // 定义一个简单的结构体来存储我们关心的事件信息
-struct ScheduledEvent: Identifiable {
+struct ScheduledEvent: Identifiable, Hashable {
     let id = UUID()
     let title: String
     let startDate: Date
     let endDate: Date
     let color: Color
     let notes: String?
+    
+    // Conform to Hashable for easier comparison and set operations if needed
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    static func == (lhs: ScheduledEvent, rhs: ScheduledEvent) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+struct EventGroup: Identifiable {
+    let id = UUID()
+    var events: [ScheduledEvent]
+    var startDate: Date
+    var endDate: Date
+    
+    // Initialize with a single event
+    init(event: ScheduledEvent) {
+        self.events = [event]
+        self.startDate = event.startDate
+        self.endDate = event.endDate
+    }
+    
+    // Add an event to the group and update start/end dates
+    mutating func addEvent(_ event: ScheduledEvent) {
+        self.events.append(event)
+        self.startDate = min(self.startDate, event.startDate)
+        self.endDate = max(self.endDate, event.endDate)
+        // Sort events within the group by start date for consistent display
+        self.events.sort { $0.startDate < $1.startDate }
+    }
+    
+    // Check if a new event overlaps with this group's time range
+    func overlaps(with event: ScheduledEvent) -> Bool {
+        return event.startDate < self.endDate && event.endDate > self.startDate
+    }
+
+    // Check if a new event should be merged with this group based on overlap or small gap
+    func shouldMerge(with event: ScheduledEvent) -> Bool {
+        let startDiff = abs(self.startDate.timeIntervalSince(event.startDate)) / 60
+        let endDiff = abs(self.endDate.timeIntervalSince(event.endDate)) / 60
+
+        // If start times are far apart OR end times are far apart, DO NOT MERGE
+        if startDiff > 15 || endDiff > 15 {
+            return false
+        }
+
+        // Otherwise, use the previous logic (overlap or small gap)
+        // Direct overlap
+        if event.startDate < self.endDate && event.endDate > self.startDate {
+            return true
+        }
+
+        // Gap is less than 15 minutes (event starts after group ends)
+        let gap = event.startDate.timeIntervalSince(self.endDate) / 60 // Gap in minutes
+        if gap >= 0 && gap < 15 {
+            return true
+        }
+
+        return false
+    }
 }
 
 class EventManager: ObservableObject {
-    @Published var events: [ScheduledEvent] = []
+    @Published var groupedEvents: [EventGroup] = [] // Changed from 'events' to 'groupedEvents'
     @Published var now: Date = Date()
     private let eventStore = EKEventStore()
     private var refreshTimer: Timer?
 
     init() {
+        print("EventManager init called.")
         checkAuthorization()
         
         // 添加观察者，监听刷新间隔变化的通知
@@ -44,6 +107,7 @@ class EventManager: ObservableObject {
             name: .manualRefreshRequested,
             object: nil
         )
+        print("EventManager observers set up.")
     }
 
     private func checkAuthorization() {
@@ -64,14 +128,16 @@ class EventManager: ObservableObject {
     }
 
     private func requestAccess() {
+        print("Requesting calendar access...")
         let completionHandler: (Bool, Error?) -> Void = { [weak self] (granted, error) in
             if granted {
+                print("Calendar access granted.")
                 DispatchQueue.main.async {
                     self?.fetchTodaysEvents()
                     self?.setupTimer()
                 }
             } else {
-                print("日历访问请求失败。")
+                print("Calendar access request failed: \(error?.localizedDescription ?? "Unknown error").")
             }
         }
 
@@ -83,9 +149,11 @@ class EventManager: ObservableObject {
     }
 
     @objc func fetchTodaysEvents() {
+        print("fetchTodaysEvents called.")
         eventStore.reset()
         
         let calendars = eventStore.calendars(for: .event)
+        print("Found \(calendars.count) calendars.")
         
         let startOfDay = Calendar.current.startOfDay(for: Date())
         let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
@@ -94,16 +162,38 @@ class EventManager: ObservableObject {
         
         let fetchedEvents = eventStore.events(matching: predicate)
             .filter { !$0.isAllDay }
-            .map {
-                ScheduledEvent(title: $0.title, startDate: $0.startDate, endDate: $0.endDate, color: Color($0.calendar.color), notes: $0.notes)
+            .map { ekEvent in
+                // Use a default color if calendar.color is nil
+                let eventColor = ekEvent.calendar.color != nil ? Color(ekEvent.calendar.color) : Color.blue
+                return ScheduledEvent(title: ekEvent.title, startDate: ekEvent.startDate, endDate: ekEvent.endDate, color: eventColor, notes: ekEvent.notes)
             }
+            .sorted { $0.startDate < $1.startDate } // Sort by start date for grouping
+        
+        print("Fetched \(fetchedEvents.count) raw events.")
+        
+        var newGroupedEvents: [EventGroup] = []
+        
+        for event in fetchedEvents {
+            // If newGroupedEvents is empty, or the current event does not overlap with the last group,
+            // start a new group.
+            if newGroupedEvents.isEmpty || !newGroupedEvents.last!.shouldMerge(with: event) {
+                newGroupedEvents.append(EventGroup(event: event))
+            } else {
+                // Otherwise, add the event to the last group.
+                newGroupedEvents[newGroupedEvents.count - 1].addEvent(event)
+            }
+        }
+        
+        print("Grouped \(newGroupedEvents.count) event groups.")
         
         DispatchQueue.main.async {
-            self.events = fetchedEvents
+            self.groupedEvents = newGroupedEvents // Assign to new groupedEvents property
+            print("groupedEvents updated on main thread.")
         }
     }
 
     @objc private func setupTimer() {
+        print("setupTimer called.")
         refreshTimer?.invalidate()
         
         var interval = UserDefaults.standard.double(forKey: "refreshInterval")
@@ -111,8 +201,9 @@ class EventManager: ObservableObject {
             interval = 900
         }
         
+        print("Setting refresh interval to \(interval) seconds.")
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            print("正在刷新事件，间隔: \(interval)秒")
+            print("Timer fired: Refreshing events.")
             self?.fetchTodaysEvents()
             self?.now = Date()
         }
