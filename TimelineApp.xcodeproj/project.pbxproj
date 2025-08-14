@@ -18,7 +18,7 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		DC08DB4F2E4DE5050067B992 /* TimelineApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TimelineApp;
+			path = SharkTimeline;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -81,9 +81,10 @@
 			name = TimelineApp;
 			packageProductDependencies = (
 			);
-			productName = TimelineApp;
-			productReference = DC08DB4D2E4DE5050067B992 /* TimelineApp.app */;
+						productName = SharkTimeline;
+			productReference = DC08DB4D2E4DE5050067B992 /* SharkTimeline.app */;
 			productType = "com.apple.product-type.application";
+		};
 		};
 /* End PBXNativeTarget section */
 
