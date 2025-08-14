@@ -41,6 +41,7 @@ struct ContentView: View {
                 }
                 
                 // 3. 代表当前时间的红色标记
+                
                 Rectangle()
                     .fill(Color.primary)
                     .frame(width: 5, height: 2)
