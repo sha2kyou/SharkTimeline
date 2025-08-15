@@ -119,6 +119,7 @@ class EventManager: ObservableObject {
     @Published var now: Date = Date()
     private let eventStore = EKEventStore()
     private var refreshTimer: Timer?
+    private var selectedCalendarIDs: [String] = [] // Managed manually with UserDefaults
 
     init() {
         print("EventManager init called.")
@@ -137,6 +138,14 @@ class EventManager: ObservableObject {
             self,
             selector: #selector(fetchTodaysEvents),
             name: .manualRefreshRequested,
+            object: nil
+        )
+        
+        // 添加观察者，监听选定日历变化的通知
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(fetchTodaysEvents),
+            name: .selectedCalendarsChanged,
             object: nil
         )
         print("EventManager observers set up.")
@@ -184,7 +193,11 @@ class EventManager: ObservableObject {
         print("fetchTodaysEvents called.")
         eventStore.reset()
         
-        let calendars = eventStore.calendars(for: .event)
+        // Load selectedCalendarIDs from UserDefaults
+        selectedCalendarIDs = UserDefaults.standard.array(forKey: "selectedCalendarIDs") as? [String] ?? []
+
+        let allCalendars = eventStore.calendars(for: .event)
+        let calendars = allCalendars.filter { selectedCalendarIDs.contains($0.calendarIdentifier) }
         print("Found \(calendars.count) calendars.")
         
         let startOfDay = Calendar.current.startOfDay(for: Date())

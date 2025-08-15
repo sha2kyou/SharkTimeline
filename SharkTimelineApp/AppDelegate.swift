@@ -2,10 +2,14 @@
 import Cocoa
 import SwiftUI
 import ServiceManagement // 引入 ServiceManagement 框架
+import EventKit // Added EventKit
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var window: NSWindow!
     var statusItem: NSStatusItem?
+    
+    private let eventStore = EKEventStore() // Added EventStore instance
+    private var selectedCalendarIDs: [String] = [] // Managed manually with UserDefaults
     
     private let intervalOptions: [(name: String, value: TimeInterval)] = [
         ("5分钟", 300),
@@ -92,6 +96,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         intervalParentItem.submenu = intervalMenu
         menu.addItem(intervalParentItem)
         
+        // 日历选择
+        let calendarMenu = NSMenu()
+        let calendarParentItem = NSMenuItem(title: "日历", action: nil, keyEquivalent: "")
+        calendarParentItem.submenu = calendarMenu
+        menu.addItem(calendarParentItem)
+        
         // --- 组2.5: 显示器 ---
         let displayMenu = NSMenu()
         let displayParentItem = NSMenuItem(title: "显示器", action: nil, keyEquivalent: "")
@@ -131,6 +141,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if let itemInterval = item.representedObject as? TimeInterval {
                     item.state = (itemInterval == effectiveInterval) ? .on : .off
                 }
+            }
+        }
+        
+        // Load selectedCalendarIDs from UserDefaults
+        selectedCalendarIDs = UserDefaults.standard.array(forKey: "selectedCalendarIDs") as? [String] ?? []
+
+        // 更新日历菜单
+        if let calendarMenu = menu.item(withTitle: "日历")?.submenu {
+            calendarMenu.removeAllItems() // 清除旧的菜单项
+            
+            // 检查日历访问权限
+            switch EKEventStore.authorizationStatus(for: .event) {
+            case .fullAccess, .authorized:
+                let availableCalendars = eventStore.calendars(for: .event).sorted { $0.title < $1.title }
+                
+                // 如果 selectedCalendarIDs 为空，则默认全选
+                if selectedCalendarIDs.isEmpty {
+                    selectedCalendarIDs = availableCalendars.map { $0.calendarIdentifier }
+                    UserDefaults.standard.set(selectedCalendarIDs, forKey: "selectedCalendarIDs") // Save default selection
+                }
+                
+                for calendar in availableCalendars {
+                    let menuItem = NSMenuItem(title: calendar.title, action: #selector(calendarSelected(_:)), keyEquivalent: "")
+                    menuItem.target = self
+                    menuItem.representedObject = calendar.calendarIdentifier
+                    menuItem.state = selectedCalendarIDs.contains(calendar.calendarIdentifier) ? .on : .off
+                    calendarMenu.addItem(menuItem)
+                }
+            case .notDetermined:
+                let requestAccessItem = NSMenuItem(title: "请求日历访问权限...", action: #selector(requestCalendarAccess), keyEquivalent: "")
+                requestAccessItem.target = self
+                calendarMenu.addItem(requestAccessItem)
+            case .writeOnly, .denied, .restricted:
+                let deniedItem = NSMenuItem(title: "日历访问权限被拒绝", action: nil, keyEquivalent: "")
+                calendarMenu.addItem(deniedItem)
+            @unknown default:
+                let unknownItem = NSMenuItem(title: "未知日历状态", action: nil, keyEquivalent: "")
+                calendarMenu.addItem(unknownItem)
             }
         }
         
@@ -274,9 +322,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.setFrame(NSRect(x: newX, y: screen.frame.minY, width: window.frame.width, height: screen.frame.height), display: true)
     }
 
+    @objc func calendarSelected(_ sender: NSMenuItem) {
+        guard let calendarIdentifier = sender.representedObject as? String else { return }
+        
+        if selectedCalendarIDs.contains(calendarIdentifier) {
+            selectedCalendarIDs.removeAll(where: { $0 == calendarIdentifier })
+        } else {
+            selectedCalendarIDs.append(calendarIdentifier)
+        }
+        
+        // Save selectedCalendarIDs to UserDefaults
+        UserDefaults.standard.set(selectedCalendarIDs, forKey: "selectedCalendarIDs")
+        
+        // Post notification when calendar selection changes
+        NotificationCenter.default.post(name: .selectedCalendarsChanged, object: nil)
+        
+        // Update menu checkmarks
+        statusItem?.menu?.update()
+    }
+    
+    @objc func requestCalendarAccess() {
+        eventStore.requestFullAccessToEvents { granted, error in
+            if granted {
+                DispatchQueue.main.async {
+                    // Refresh the menu to show calendars
+                    self.statusItem?.menu?.update()
+                    // Also trigger a refresh of events
+                    NotificationCenter.default.post(name: .manualRefreshRequested, object: nil)
+                }
+            } else {
+                print("Calendar access request failed: \(error?.localizedDescription ?? "Unknown error").")
+            }
+        }
+    }
+
     @objc func screenParametersDidChange(_ notification: Notification) {
         print("Screen parameters changed. Updating window position and menu.")
         updateWindowPosition()
         statusItem?.menu?.update() // Refresh the menu to update screen selection checkmarks
     }
+}
+
+// Extend Notification.Name for new notification
+extension Notification.Name {
+    static let selectedCalendarsChanged = Notification.Name("selectedCalendarsChanged")
 }
