@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var popoverGroup: EventGroup? // State to control popover visibility for a group
     @State private var showSettings = false
     @State private var showAbout = false
+    @AppStorage("timelinePosition") private var timelinePosition: String = "left"
 
     let totalMinutesInDay: CGFloat = 1440.0 // Define totalMinutesInDay here
 
@@ -43,11 +44,11 @@ struct ContentView: View {
                 
                 // 3. 代表当前时间的红色标记
                 
-                Rectangle()
+                TriangleShape(isLeftAligned: timelinePosition == "left") // Dynamically set direction based on settings
                     .fill(Color.primary)
-                    .frame(width: 5, height: 2)
-                    .allowsHitTesting(false)
+                    .frame(width: 5, height: 5) // Width 5px, Height 5px
                     .position(x: 2.5, y: calculateYOffset(for: eventManager.now, in: geometry.size.height))
+                    .allowsHitTesting(false)
             }
         }
         .frame(width: 5) // 视图宽度为 5px
@@ -155,5 +156,30 @@ struct EventGroupView: View {
 
     private func formatTimeRange(from startDate: Date, to endDate: Date) -> String {
         return "\(formatTime(from: startDate)) - \(formatTime(from: endDate))"
+    }
+}
+
+struct TriangleShape: Shape {
+    var isLeftAligned: Bool // This will determine the direction of the arrow
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        if isLeftAligned {
+            // Tip at (rect.maxX, rect.midY)
+            // Base at (rect.minX, rect.minY) and (rect.minX, rect.maxY)
+            path.move(to: CGPoint(x: rect.maxX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.closeSubpath()
+        } else {
+            // Tip at (rect.minX, rect.midY)
+            // Base at (rect.maxX, rect.minY) and (rect.maxX, rect.maxY)
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.closeSubpath()
+        }
+        return path
     }
 }
