@@ -4,8 +4,6 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var eventManager: EventManager
     @State private var popoverGroup: EventGroup? // State to control popover visibility for a group
-    @State private var showSettings = false
-    @State private var showAbout = false
     @AppStorage("timelinePosition") private var timelinePosition: String = "left"
 
     let totalMinutesInDay: CGFloat = 1440.0 // Define totalMinutesInDay here

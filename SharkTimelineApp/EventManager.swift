@@ -8,6 +8,7 @@ import SwiftUI
 extension Notification.Name {
     static let refreshIntervalChanged = Notification.Name("refreshIntervalChanged")
     static let manualRefreshRequested = Notification.Name("manualRefreshRequested")
+    static let selectedCalendarsChanged = Notification.Name("selectedCalendarsChanged")
 }
 
 // 定义一个简单的结构体来存储我们关心的事件信息
@@ -51,37 +52,6 @@ struct EventGroup: Identifiable {
         // Sort events within the group by start date for consistent display
         self.events.sort { $0.startDate < $1.startDate }
     }
-    
-    // Check if a new event overlaps with this group's time range
-    func overlaps(with event: ScheduledEvent) -> Bool {
-        return event.startDate < self.endDate && event.endDate > self.startDate
-    }
-
-    // Check if a new event should be merged with this group based on overlap or small gap
-    func shouldMerge(with event: ScheduledEvent) -> Bool {
-        // Get the color of the existing group (assuming it's represented by the first event's color)
-        guard let groupColor = self.events.first?.color else {
-            return false // Cannot merge if group has no color reference
-        }
-
-        // Rule 1: Same color AND any overlap
-        if groupColor == event.color {
-            // Check for any overlap
-            return event.startDate < self.endDate && event.endDate > self.startDate
-        }
-        // Rule 2: Different colors
-        else {
-            let startDiff = abs(self.startDate.timeIntervalSince(event.startDate)) / 60
-            let endDiff = abs(self.endDate.timeIntervalSince(event.endDate)) / 60
-
-            // Do NOT merge if start times are far apart OR end times are far apart
-            if startDiff >= 15 || endDiff >= 15 {
-                return false
-            } else {
-                return true // Merge if colors are different AND start/end times are close
-            }
-        }
-    }
 }
 
 extension EventGroup {
@@ -122,7 +92,6 @@ class EventManager: ObservableObject {
     private var selectedCalendarIDs: [String] = [] // Managed manually with UserDefaults
 
     init() {
-        print("EventManager init called.")
         checkAuthorization()
         
         // 添加观察者，监听刷新间隔变化的通知
@@ -148,7 +117,6 @@ class EventManager: ObservableObject {
             name: .selectedCalendarsChanged,
             object: nil
         )
-        print("EventManager observers set up.")
     }
 
     private func checkAuthorization() {
@@ -158,27 +126,28 @@ class EventManager: ObservableObject {
             setupTimer()
         
         case .notDetermined:
-            requestAccess()
-        
-        case .writeOnly, .denied, .restricted:
-            print("日历访问权限不足或被拒绝。")
-        
-        @unknown default:
-            print("未知的日历授权状态。")
-        }
-    }
-
-    private func requestAccess() {
-        print("Requesting calendar access...")
-        let completionHandler: (Bool, Error?) -> Void = { [weak self] (granted, error) in
-            if granted {
-                print("Calendar access granted.")
-                DispatchQueue.main.async {
+            requestAccess { [weak self] granted in
+                if granted {
                     self?.fetchTodaysEvents()
                     self?.setupTimer()
                 }
-            } else {
-                print("Calendar access request failed: \(error?.localizedDescription ?? "Unknown error").")
+            }
+        
+        case .writeOnly, .denied, .restricted:
+            break // Do nothing, UI will show appropriate message
+        
+        @unknown default:
+            break // Do nothing
+        }
+    }
+
+    func requestAccess(completion: @escaping (Bool) -> Void) {
+        let completionHandler: (Bool, Error?) -> Void = { (granted, error) in
+            if !granted, let error = error {
+                print("Calendar access request failed: \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async {
+                completion(granted)
             }
         }
 
@@ -190,7 +159,6 @@ class EventManager: ObservableObject {
     }
 
     @objc func fetchTodaysEvents() {
-        print("fetchTodaysEvents called.")
         eventStore.reset()
         
         // Load selectedCalendarIDs from UserDefaults
@@ -198,7 +166,6 @@ class EventManager: ObservableObject {
 
         let allCalendars = eventStore.calendars(for: .event)
         let calendars = allCalendars.filter { selectedCalendarIDs.contains($0.calendarIdentifier) }
-        print("Found \(calendars.count) calendars.")
         
         let startOfDay = Calendar.current.startOfDay(for: Date())
         let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
@@ -213,8 +180,6 @@ class EventManager: ObservableObject {
                 return ScheduledEvent(title: ekEvent.title, startDate: ekEvent.startDate, endDate: ekEvent.endDate, color: eventColor, notes: ekEvent.notes, calendarName: ekEvent.calendar.title)
             }
             .sorted { $0.startDate < $1.startDate } // Sort by start date for grouping
-        
-        print("Fetched \(fetchedEvents.count) raw events.")
         
         // --- Start of new grouping logic (Connected Components) ---
 
@@ -280,16 +245,12 @@ class EventManager: ObservableObject {
 
         // --- End of new grouping logic ---
         
-        print("Grouped \(newGroupedEvents.count) event groups.")
-        
         DispatchQueue.main.async {
             self.groupedEvents = newGroupedEvents // Assign to new groupedEvents property
-            print("groupedEvents updated on main thread.")
         }
     }
 
     @objc private func setupTimer() {
-        print("setupTimer called.")
         refreshTimer?.invalidate()
         
         var interval = UserDefaults.standard.double(forKey: "refreshInterval")
@@ -297,9 +258,7 @@ class EventManager: ObservableObject {
             interval = 900
         }
         
-        print("Setting refresh interval to \(interval) seconds.")
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            print("Timer fired: Refreshing events.")
             self?.fetchTodaysEvents()
             self?.now = Date()
         }

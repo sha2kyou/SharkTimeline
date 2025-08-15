@@ -290,24 +290,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     } else {
                         // Fallback on earlier versions
                         guard let bundleID = Bundle.main.bundleIdentifier else {
-                            print("错误：无法获取应用 Bundle ID。")
                             return
                         }
                         _ = SMLoginItemSetEnabled(bundleID as CFString, true)
                     }
-                    print("开机自启动已启用。")
                 } else {
                     if #available(macOS 13.0, *) {
                         try SMAppService.mainApp.unregister()
                     } else {
                         // Fallback on earlier versions
                         guard let bundleID = Bundle.main.bundleIdentifier else {
-                            print("错误：无法获取应用 Bundle ID。")
                             return
                         }
                         _ = SMLoginItemSetEnabled(bundleID as CFString, false)
                     }
-                    print("开机自启动已禁用。")
                 }
                 sender.state = newState
                 UserDefaults.standard.set(enable, forKey: "launchAtLoginEnabled") // 更新 UserDefaults 状态
@@ -345,13 +341,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let position = UserDefaults.standard.string(forKey: "timelinePosition") ?? "left"
 
         let newX = (position == "right") ? (screen.frame.minX + screen.frame.width - window.frame.width) : screen.frame.minX
-        print("--- Debug Window Position ---")
-        print("Screen: \(screen.localizedName) (ID: \((screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue ?? "N/A"))")
-        print("Screen Frame: \(screen.frame)")
-        print("Window Frame (before set): \(window.frame)")
-        print("Calculated newX: \(newX)")
-        print("Window Width: \(window.frame.width)")
-        print("--- End Debug ---")
         window.setFrame(NSRect(x: newX, y: screen.frame.minY, width: window.frame.width, height: screen.frame.height), display: true)
     }
 
@@ -375,28 +364,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func requestCalendarAccess() {
-        eventStore.requestFullAccessToEvents { granted, error in
+        eventManager.requestAccess { [weak self] granted in
             if granted {
+                // Manually trigger a refresh so the UI updates.
+                NotificationCenter.default.post(name: .manualRefreshRequested, object: nil)
+                
+                // The menu will update on its next opening via the menuNeedsUpdate delegate method.
+                // To be safe and provide immediate feedback if the menu were to somehow stay open,
+                // we can also call update().
                 DispatchQueue.main.async {
-                    // Refresh the menu to show calendars
-                    self.statusItem?.menu?.update()
-                    // Also trigger a refresh of events
-                    NotificationCenter.default.post(name: .manualRefreshRequested, object: nil)
+                    self?.statusItem?.menu?.update()
                 }
-            } else {
-                print("Calendar access request failed: \(error?.localizedDescription ?? "Unknown error").")
             }
         }
     }
 
     @objc func screenParametersDidChange(_ notification: Notification) {
-        print("Screen parameters changed. Updating window position and menu.")
         updateWindowPosition()
         statusItem?.menu?.update() // Refresh the menu to update screen selection checkmarks
     }
-}
-
-// Extend Notification.Name for new notification
-extension Notification.Name {
-    static let selectedCalendarsChanged = Notification.Name("selectedCalendarsChanged")
 }
