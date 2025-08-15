@@ -25,6 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     var eventManager: EventManager! // Add this property
 
+    var aboutWindow: NSWindow?
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Initialize EventManager
         eventManager = EventManager()
@@ -61,8 +62,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "calendar.day.timeline.left", accessibilityDescription: "Timeline App")
             button.image?.isTemplate = true
+            button.action = #selector(statusItemClicked(sender:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+    }
 
+    @objc func statusItemClicked(sender: NSStatusItem) {
+        let event = NSApp.currentEvent!
+        if event.type == .rightMouseUp {
+            let menu = NSMenu()
+            let aboutItem = NSMenuItem(title: "关于", action: #selector(showAboutWindow), keyEquivalent: "")
+            aboutItem.target = self
+            menu.addItem(aboutItem)
+            statusItem?.popUpMenu(menu)
+        } else {
+            let menu = constructMenu()
+            statusItem?.popUpMenu(menu)
+        }
+    }
+
+    func constructMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
         
@@ -119,7 +138,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quitItem = NSMenuItem(title: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
         
-        statusItem?.menu = menu
+        return menu
+    }
+
+    @objc func showAboutWindow() {
+        if aboutWindow == nil {
+            let aboutView = AboutView()
+            let hostingController = NSHostingController(rootView: aboutView)
+            let newWindow = NSWindow(contentViewController: hostingController)
+            newWindow.title = "关于 SharkTimeline"
+            newWindow.styleMask = [.titled, .closable]
+            newWindow.center()
+            self.aboutWindow = newWindow
+        }
+        aboutWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
     
     func menuNeedsUpdate(_ menu: NSMenu) {
