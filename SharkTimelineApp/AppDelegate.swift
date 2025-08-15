@@ -85,14 +85,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         
-        // --- 组1: 操作 ---
+        // --- 组1: 立即刷新 ---
         let refreshItem = NSMenuItem(title: "立即刷新", action: #selector(refreshNow), keyEquivalent: "r")
         refreshItem.target = self
         menu.addItem(refreshItem)
         
         menu.addItem(NSMenuItem.separator())
+
+        // --- 组2: 日历 ---
+        let calendarMenu = NSMenu()
+        let calendarParentItem = NSMenuItem(title: "日历", action: nil, keyEquivalent: "")
+        calendarParentItem.submenu = calendarMenu
+        menu.addItem(calendarParentItem)
+
+        menu.addItem(NSMenuItem.separator())
         
-        // --- 组2: 设置 ---
+        // --- 组3: 设置 ---
         let positionMenu = NSMenu()
         for option in positionOptions {
             let menuItem = NSMenuItem(title: option.name, action: #selector(positionSelected(_:)), keyEquivalent: "")
@@ -100,9 +108,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menuItem.representedObject = option.value
             positionMenu.addItem(menuItem)
         }
-        let positionParentItem = NSMenuItem(title: "位置", action: nil, keyEquivalent: "")
+        let positionParentItem = NSMenuItem(title: "侧栏位置", action: nil, keyEquivalent: "")
         positionParentItem.submenu = positionMenu
         menu.addItem(positionParentItem)
+
+        let displayMenu = NSMenu()
+        let displayParentItem = NSMenuItem(title: "显示器", action: nil, keyEquivalent: "")
+        displayParentItem.submenu = displayMenu
+        menu.addItem(displayParentItem)
         
         let intervalMenu = NSMenu()
         for option in intervalOptions {
@@ -111,26 +124,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menuItem.representedObject = option.value
             intervalMenu.addItem(menuItem)
         }
-        let intervalParentItem = NSMenuItem(title: "刷新间隔", action: nil, keyEquivalent: "")
+        let intervalParentItem = NSMenuItem(title: "后台刷新间隔", action: nil, keyEquivalent: "")
         intervalParentItem.submenu = intervalMenu
         menu.addItem(intervalParentItem)
         
-        // 日历选择
-        let calendarMenu = NSMenu()
-        let calendarParentItem = NSMenuItem(title: "日历", action: nil, keyEquivalent: "")
-        calendarParentItem.submenu = calendarMenu
-        menu.addItem(calendarParentItem)
-        
-        // --- 组2.5: 显示器 ---
-        let displayMenu = NSMenu()
-        let displayParentItem = NSMenuItem(title: "显示器", action: nil, keyEquivalent: "")
-        displayParentItem.submenu = displayMenu
-        menu.addItem(displayParentItem)
-        
         menu.addItem(NSMenuItem.separator())
         
-        // --- 组3: 应用 ---
-        // 开机自启动选项
+        // --- 组4: 应用 ---
         let launchAtLoginItem = NSMenuItem(title: "开机自启动", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
         launchAtLoginItem.target = self
         menu.addItem(launchAtLoginItem)
@@ -158,7 +158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         // 更新位置菜单的对勾
         let currentPosition = UserDefaults.standard.string(forKey: "timelinePosition") ?? "left"
-        if let positionMenu = menu.item(withTitle: "位置")?.submenu {
+        if let positionMenu = menu.item(withTitle: "侧栏位置")?.submenu {
             for item in positionMenu.items {
                 if let itemPosition = item.representedObject as? String {
                     item.state = (itemPosition == currentPosition) ? .on : .off
@@ -169,7 +169,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 更新刷新间隔菜单的对勾
         let currentInterval = UserDefaults.standard.double(forKey: "refreshInterval")
         let effectiveInterval = currentInterval > 0 ? currentInterval : 900
-        if let intervalMenu = menu.item(withTitle: "刷新间隔")?.submenu {
+        if let intervalMenu = menu.item(withTitle: "后台刷新间隔")?.submenu {
             for item in intervalMenu.items {
                 if let itemInterval = item.representedObject as? TimeInterval {
                     item.state = (itemInterval == effectiveInterval) ? .on : .off
