@@ -18,6 +18,7 @@ struct ScheduledEvent: Identifiable, Hashable {
     let endDate: Date
     let color: Color
     let notes: String?
+    let calendarName: String // Add this property
     
     // Conform to Hashable for easier comparison and set operations if needed
     func hash(into hasher: inout Hasher) {
@@ -165,7 +166,7 @@ class EventManager: ObservableObject {
             .map { ekEvent in
                 // Use a default color if calendar.color is nil
                 let eventColor = ekEvent.calendar.color != nil ? Color(ekEvent.calendar.color) : Color.blue
-                return ScheduledEvent(title: ekEvent.title, startDate: ekEvent.startDate, endDate: ekEvent.endDate, color: eventColor, notes: ekEvent.notes)
+                return ScheduledEvent(title: ekEvent.title, startDate: ekEvent.startDate, endDate: ekEvent.endDate, color: eventColor, notes: ekEvent.notes, calendarName: ekEvent.calendar.title)
             }
             .sorted { $0.startDate < $1.startDate } // Sort by start date for grouping
         

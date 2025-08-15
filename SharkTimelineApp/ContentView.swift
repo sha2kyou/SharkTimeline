@@ -121,6 +121,10 @@ struct EventGroupView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                                 
+                                Text(event.calendarName)
+                                    .font(.caption)
+                                    .foregroundColor(event.color)
+                                
                                 if let notes = event.notes, !notes.isEmpty {
                                     Divider()
                                         .padding(.vertical, 2)

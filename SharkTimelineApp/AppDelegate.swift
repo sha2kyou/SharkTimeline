@@ -271,7 +271,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("Calculated newX: \(newX)")
         print("Window Width: \(window.frame.width)")
         print("--- End Debug ---")
-        window.setFrameOrigin(NSPoint(x: newX, y: screen.frame.minY))
+        window.setFrame(NSRect(x: newX, y: screen.frame.minY, width: window.frame.width, height: screen.frame.height), display: true)
     }
 
     @objc func screenParametersDidChange(_ notification: Notification) {
