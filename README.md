@@ -41,7 +41,6 @@ SharkTimeline 是一款专为 macOS 设计的轻量级时间线管理工具。�
 
 ## 截图
 
-
-<img width="598" height="479" alt="1Capture_2025-08-14_21 44 41" src="https://github.com/user-attachments/assets/7c2d5da5-dfa1-4cbe-9f7b-791d563a14e3" />
+<img width="788" height="1080" alt="image" src="https://github.com/user-attachments/assets/a4d2984d-caaf-4580-a576-2960c36009fe" />
 
 <img width="293" height="276" alt="1Capture_2025-08-14_21 47 07" src="https://github.com/user-attachments/assets/ae61896e-609d-4bd0-a7fd-3cdaee6c800b" />
