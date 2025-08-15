@@ -59,27 +59,28 @@ struct EventGroup: Identifiable {
 
     // Check if a new event should be merged with this group based on overlap or small gap
     func shouldMerge(with event: ScheduledEvent) -> Bool {
-        let startDiff = abs(self.startDate.timeIntervalSince(event.startDate)) / 60
-        let endDiff = abs(self.endDate.timeIntervalSince(event.endDate)) / 60
-
-        // If start times are far apart OR end times are far apart, DO NOT MERGE
-        if startDiff > 15 || endDiff > 15 {
-            return false
+        // Get the color of the existing group (assuming it's represented by the first event's color)
+        guard let groupColor = self.events.first?.color else {
+            return false // Cannot merge if group has no color reference
         }
 
-        // Otherwise, use the previous logic (overlap or small gap)
-        // Direct overlap
-        if event.startDate < self.endDate && event.endDate > self.startDate {
-            return true
+        // Rule 1: Same color AND any overlap
+        if groupColor == event.color {
+            // Check for any overlap
+            return event.startDate < self.endDate && event.endDate > self.startDate
         }
+        // Rule 2: Different colors
+        else {
+            let startDiff = abs(self.startDate.timeIntervalSince(event.startDate)) / 60
+            let endDiff = abs(self.endDate.timeIntervalSince(event.endDate)) / 60
 
-        // Gap is less than 15 minutes (event starts after group ends)
-        let gap = event.startDate.timeIntervalSince(self.endDate) / 60 // Gap in minutes
-        if gap >= 0 && gap < 15 {
-            return true
+            // Do NOT merge if start times are far apart OR end times are far apart
+            if startDiff >= 15 || endDiff >= 15 {
+                return false
+            } else {
+                return true // Merge if colors are different AND start/end times are close
+            }
         }
-
-        return false
     }
 }
 
