@@ -84,6 +84,36 @@ struct EventGroup: Identifiable {
     }
 }
 
+extension EventGroup {
+    static func shouldMerge(event1: ScheduledEvent, event2: ScheduledEvent) -> Bool {
+        // This logic is similar to the instance shouldMerge, but operates on two ScheduledEvents.
+        // We need to decide which event acts as the "group" and which as the "new event".
+        // Since the relationship is symmetric, we can pick one as "self" and the other as "event".
+        // For the purpose of color comparison, we assume event1 is the "group".
+
+        // Get the color of event1
+        let groupColor = event1.color
+
+        // Rule 1: Same color AND any overlap
+        if groupColor == event2.color {
+            // Check for any overlap between event1 and event2
+            return event1.startDate < event2.endDate && event2.startDate < event1.endDate
+        }
+        // Rule 2: Different colors
+        else {
+            let startDiff = abs(event1.startDate.timeIntervalSince(event2.startDate)) / 60
+            let endDiff = abs(event1.endDate.timeIntervalSince(event2.endDate)) / 60
+
+            // Do NOT merge if start times are far apart OR end times are far apart
+            if startDiff >= 15 || endDiff >= 15 {
+                return false
+            } else {
+                return true // Merge if colors are different AND start/end times are close
+            }
+        }
+    }
+}
+
 class EventManager: ObservableObject {
     @Published var groupedEvents: [EventGroup] = [] // Changed from 'events' to 'groupedEvents'
     @Published var now: Date = Date()
@@ -173,18 +203,69 @@ class EventManager: ObservableObject {
         
         print("Fetched \(fetchedEvents.count) raw events.")
         
-        var newGroupedEvents: [EventGroup] = []
-        
-        for event in fetchedEvents {
-            // If newGroupedEvents is empty, or the current event does not overlap with the last group,
-            // start a new group.
-            if newGroupedEvents.isEmpty || !newGroupedEvents.last!.shouldMerge(with: event) {
-                newGroupedEvents.append(EventGroup(event: event))
-            } else {
-                // Otherwise, add the event to the last group.
-                newGroupedEvents[newGroupedEvents.count - 1].addEvent(event)
+        // --- Start of new grouping logic (Connected Components) ---
+
+        // 1. Build the Adjacency List (Graph)
+        // adjList[i] will contain indices of events that should merge with fetchedEvents[i]
+        var adjList: [Int: [Int]] = [:]
+        for i in 0..<fetchedEvents.count {
+            adjList[i] = [] // Initialize empty list for each event
+        }
+
+        for i in 0..<fetchedEvents.count {
+            for j in (i + 1)..<fetchedEvents.count { // Avoid duplicate pairs and self-loops
+                let event1 = fetchedEvents[i]
+                let event2 = fetchedEvents[j]
+
+                if EventGroup.shouldMerge(event1: event1, event2: event2) {
+                    adjList[i]?.append(j)
+                    adjList[j]?.append(i) // Graph is undirected
+                }
             }
         }
+
+        // 2. Find Connected Components using DFS
+        var visited: [Bool] = Array(repeating: false, count: fetchedEvents.count)
+        var newGroupedEvents: [EventGroup] = []
+
+        for i in 0..<fetchedEvents.count {
+            if !visited[i] {
+                var currentComponentEvents: [ScheduledEvent] = []
+                var stack: [Int] = [i] // Use a stack for DFS
+
+                visited[i] = true
+
+                while !stack.isEmpty {
+                    let currentIndex = stack.removeLast()
+                    currentComponentEvents.append(fetchedEvents[currentIndex])
+
+                    if let neighbors = adjList[currentIndex] {
+                        for neighborIndex in neighbors {
+                            if !visited[neighborIndex] {
+                                visited[neighborIndex] = true
+                                stack.append(neighborIndex)
+                            }
+                        }
+                    }
+                }
+
+                // 3. Form EventGroup from the connected component
+                if !currentComponentEvents.isEmpty {
+                    // Sort events within the component by start date for consistent group properties
+                    currentComponentEvents.sort { $0.startDate < $1.startDate }
+
+                    let firstEventInComponent = currentComponentEvents.first!
+                    var newGroup = EventGroup(event: firstEventInComponent)
+
+                    for k in 1..<currentComponentEvents.count {
+                        newGroup.addEvent(currentComponentEvents[k])
+                    }
+                    newGroupedEvents.append(newGroup)
+                }
+            }
+        }
+
+        // --- End of new grouping logic ---
         
         print("Grouped \(newGroupedEvents.count) event groups.")
         
