@@ -54,6 +54,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         // Register for screen parameter change notifications
         NotificationCenter.default.addObserver(self, selector: #selector(screenParametersDidChange(_:)), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        
+        // 注册工作区通知
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(receiveWakeNote(note:)), name: NSWorkspace.didWakeNotification, object: nil)
+    }
+    
+    @objc func receiveWakeNote(note: NSNotification) {
+        // 当屏幕解锁时，执行刷新操作
+        refreshNow()
     }
 
     func setupMenuBar() {
