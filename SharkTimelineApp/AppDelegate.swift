@@ -60,8 +60,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func receiveWakeNote(note: NSNotification) {
-        // 当屏幕解锁时，执行刷新操作
-        refreshNow()
+        // 当屏幕解锁时，延迟1s执行刷新操作
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.refreshNow()
+        }
     }
 
     func setupMenuBar() {
@@ -75,18 +77,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private var isShowingMenu = false
+
     @objc func statusItemClicked(sender: NSStatusItem) {
+        if isShowingMenu {
+            return
+        }
+        isShowingMenu = true
+
         let event = NSApp.currentEvent!
+        let menu: NSMenu
         if event.type == .rightMouseUp {
-            let menu = NSMenu()
+            menu = NSMenu()
             let aboutItem = NSMenuItem(title: "关于", action: #selector(showAboutWindow), keyEquivalent: "")
             aboutItem.target = self
             menu.addItem(aboutItem)
-            statusItem?.popUpMenu(menu)
         } else {
-            let menu = constructMenu()
-            statusItem?.popUpMenu(menu)
+            menu = constructMenu()
         }
+        
+        menu.delegate = self // Set delegate to self
+        statusItem?.menu = menu
+        statusItem?.button?.performClick(nil)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        statusItem?.menu = nil
+        isShowingMenu = false
     }
 
     func constructMenu() -> NSMenu {
